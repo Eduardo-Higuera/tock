@@ -8,6 +8,7 @@
 #![cfg_attr(not(doc), no_main)]
 #![deny(missing_docs)]
 
+use capsules::ninedof::NineDof;
 use capsules::virtual_aes_ccm::MuxAES128CCM;
 use kernel::capabilities;
 use kernel::common::dynamic_deferred_call::{DynamicDeferredCall, DynamicDeferredCallClientState};
@@ -125,6 +126,7 @@ pub struct Platform {
         'static,
         capsules::virtual_alarm::VirtualMuxAlarm<'static, nrf52::rtc::Rtc<'static>>,
     >,
+    ninedof: &'static capsules::ninedof::NineDof<'static>,
 }
 
 impl kernel::Platform for Platform {
@@ -141,6 +143,7 @@ impl kernel::Platform for Platform {
             capsules::rng::DRIVER_NUM => f(Some(self.rng)),
             capsules::ble_advertising_driver::DRIVER_NUM => f(Some(self.ble_radio)),
             capsules::ieee802154::DRIVER_NUM => f(Some(self.ieee802154_radio)),
+	    capsules::ninedof::DRIVER_NUM => f(Some(self.ninedof)),
             kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
             _ => f(None),
         }
@@ -350,6 +353,28 @@ pub unsafe fn reset_handler() {
 
     kernel::hil::sensors::ProximityDriver::set_client(apds9960, proximity);
 
+
+    let lsm9ds1_i2c_accel = static_init!(capsules::virtual_i2c::I2CDevice, capsules::virtual_i2c::I2CDevice::new(sensors_i2c_bus, 0xd5)); 
+    let lsm9ds1_i2c_magnet = static_init!(capsules::virtual_i2c::I2CDevice, capsules::virtual_i2c::I2CDevice::new(sensors_i2c_bus, 0x39)); 
+    let lsm9ds1 = static_init!(
+	[capsules::lsm9ds1::Lsm9ds1<'static>; 1], 
+	[capsules::lsm9ds1::Lsm9ds1::new(
+	    lsm9ds1_i2c_accel, 
+	    lsm9ds1_i2c_magnet, 
+	    &mut capsules::lsm9ds1::BUFFER, 
+	); 1]
+    ); 
+    lsm9ds1_i2c_accel.set_client(lsm9ds1[0]); 
+    lsm9ds1_i2c_magnet.set_client(lsm9ds1[0]); 
+
+    let grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
+    let ninedof = static_init!(
+        NineDof<'static>,
+        NineDof::new(lsm9ds1, board_kernel.create_grant(&grant_cap))
+    );
+    kernel::hil::sensors::NineDof::set_client(lsm9ds1, ninedof);
+
+
     //--------------------------------------------------------------------------
     // WIRELESS
     //--------------------------------------------------------------------------
@@ -403,6 +428,7 @@ pub unsafe fn reset_handler() {
         rng,
         alarm,
         ipc: kernel::ipc::IPC::new(board_kernel, &memory_allocation_capability),
+        ninedof,
     };
 
     let chip = static_init!(
