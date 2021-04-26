@@ -96,7 +96,7 @@ register_bitfields![u8,
     pub (crate) CTRL_REG4 [
         /// Block Data update
         BDU OFFSET(7) NUMBITS(2) [],
-        /// Big Little Endian
+        /// Big Little Endia
         BLE OFFSET(6) NUMBITS(1) [],
         /// Full Scale selection
         FS OFFSET(4) NUMBITS(2) [],
